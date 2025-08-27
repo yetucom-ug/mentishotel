@@ -1,28 +1,117 @@
-import React from "react";
-import { AppBar, Toolbar, Typography, Button } from "@mui/material";
-import { NavLink } from "react-router-dom";
+import React, { useState } from "react";
+import { 
+  AppBar, 
+  Toolbar, 
+  Typography, 
+  Button, 
+  Menu, 
+  MenuItem,
+  Avatar,
+  Box,
+  IconButton
+} from "@mui/material";
+import { NavLink, useNavigate } from "react-router-dom";
+import { AccountCircle, ExitToApp } from "@mui/icons-material";
+import { useAuth } from "../contexts/AuthContext";
 
 function Navbar() {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const [anchorEl, setAnchorEl] = useState(null);
+
+  const handleMenu = (event) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleClose = () => {
+    setAnchorEl(null);
+  };
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+    handleClose();
+  };
+
+  const navItems = [
+    { path: "/dashboard", label: "Dashboard" },
+    { path: "/rooms", label: "Rooms" },
+    { path: "/restaurant", label: "Restaurant" },
+    { path: "/orders", label: "Orders" },
+    { path: "/billing", label: "Billing" },
+    { path: "/roomservice", label: "Room Service" },
+    { path: "/payments", label: "Payments" },
+    { path: "/venue-booking", label: "Venues" },
+    { path: "/housekeeping", label: "Housekeeping" },
+    { path: "/reports", label: "Reports" },
+    { path: "/hotel-details", label: "Settings" },
+    { path: "/invoices", label: "Invoices" },
+  ];
+
   return (
     <AppBar position="sticky" color="primary" elevation={2}>
       <Toolbar>
         <Typography variant="h6" sx={{ flexGrow: 1 }}>
           Mentis Hotel
         </Typography>
-        <Button color="inherit" component={NavLink} to="/" sx={{ mx: 1 }}>Dashboard</Button>
-        <Button color="inherit" component={NavLink} to="/rooms" sx={{ mx: 1 }}>Rooms</Button>
-        <Button color="inherit" component={NavLink} to="/login" sx={{ mx: 1 }}>Login</Button>
-		<Button color="inherit" component={NavLink} to="/restaurant">Restaurant</Button>
-        <Button color="inherit" component={NavLink} to="/orders">Orders</Button>
-        <Button color="inherit" component={NavLink} to="/billing">Billing</Button>
-		<Button color="inherit" component={NavLink} to="/roomservice">Room Service</Button>
-        <Button color="inherit" component={NavLink} to="/payments">Payments</Button>
-		<Button color="inherit" component={NavLink} to="/venue-booking">Venue Booking</Button>
-		<Button color="inherit" component={NavLink} to="/venue-booking">Venue Booking</Button>
-        <Button color="inherit" component={NavLink} to="/housekeeping">Housekeeping</Button>
-        <Button color="inherit" component={NavLink} to="/reports">Reports</Button>
-		<Button color="inherit" component={NavLink} to="/hotel-details">Hotel Details</Button>
-		<Button color="inherit" component={NavLink} to="/invoices">Invoices</Button>
+        
+        <Box sx={{ display: { xs: 'none', md: 'flex' }, gap: 1 }}>
+          {navItems.map((item) => (
+            <Button
+              key={item.path}
+              color="inherit"
+              component={NavLink}
+              to={item.path}
+              sx={{
+                mx: 0.5,
+                '&.active': {
+                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                  borderRadius: 1,
+                }
+              }}
+            >
+              {item.label}
+            </Button>
+          ))}
+        </Box>
+
+        <Box sx={{ ml: 2 }}>
+          <IconButton
+            size="large"
+            aria-label="account of current user"
+            aria-controls="menu-appbar"
+            aria-haspopup="true"
+            onClick={handleMenu}
+            color="inherit"
+          >
+            <AccountCircle />
+          </IconButton>
+          <Menu
+            id="menu-appbar"
+            anchorEl={anchorEl}
+            anchorOrigin={{
+              vertical: 'top',
+              horizontal: 'right',
+            }}
+            keepMounted
+            transformOrigin={{
+              vertical: 'top',
+              horizontal: 'right',
+            }}
+            open={Boolean(anchorEl)}
+            onClose={handleClose}
+          >
+            <MenuItem disabled>
+              <Typography variant="body2">
+                {user?.username} ({user?.role})
+              </Typography>
+            </MenuItem>
+            <MenuItem onClick={handleLogout}>
+              <ExitToApp sx={{ mr: 1 }} />
+              Logout
+            </MenuItem>
+          </Menu>
+        </Box>
       </Toolbar>
     </AppBar>
   );

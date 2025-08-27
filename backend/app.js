@@ -16,41 +16,59 @@ const hotelDetailsRoutes = require('./routes/hotelDetailsRoutes');
 const invoiceRoutes = require('./routes/invoiceRoutes');
 
 const app = express();
-app.use(cors());
-app.use(helmet());
-app.use(express.json());
 
-import RestaurantMenu from "./pages/RestaurantMenu";
-import Orders from "./pages/Orders";
-import Billing from "./pages/Billing";
-import RoomService from "./pages/RoomService";
-import Payments from "./pages/Payments";
-import VenueBooking from "./pages/VenueBooking";
-import VenueBooking from "./pages/VenueBooking";
-import Housekeeping from "./pages/Housekeeping";
-import Reports from "./pages/Reports";
-import HotelDetails from "./pages/HotelDetails";
-import Invoice from "./pages/Invoice";
+// Security middleware
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+    },
+  },
+}));
 
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' 
+    ? process.env.FRONTEND_URL 
+    : 'http://localhost:3000',
+  credentials: true
+}));
 
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// ... inside <Routes>
-<Route path="/restaurant" element={<RestaurantMenu />} />
-<Route path="/orders" element={<Orders />} />
-<Route path="/billing" element={<Billing />} />
-<Route path="/roomservice" element={<RoomService />} />
-<Route path="/payments" element={<Payments />} />
-<Route path="/venue-booking" element={<VenueBooking />} />
-<Route path="/venue-booking" element={<VenueBooking />} />
-<Route path="/housekeeping" element={<Housekeeping />} />
-<Route path="/reports" element={<Reports />} />
-<Route path="/hotel-details" element={<HotelDetails />} />
-<Route path="/invoices" element={<Invoice />} />
+// Request logging middleware
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  next();
+});
 
-mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => console.log('Mongo connected'))
-  .catch(err => { console.error(err); process.exit(1); });
+// MongoDB connection with better error handling
+mongoose.connect(process.env.MONGO_URI, { 
+  useNewUrlParser: true, 
+  useUnifiedTopology: true,
+  maxPoolSize: 10,
+  serverSelectionTimeoutMS: 5000,
+  socketTimeoutMS: 45000,
+})
+  .then(() => console.log('MongoDB connected successfully'))
+  .catch(err => { 
+    console.error('MongoDB connection error:', err); 
+    process.exit(1); 
+  });
 
+// Handle MongoDB connection events
+mongoose.connection.on('error', err => {
+  console.error('MongoDB error:', err);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.log('MongoDB disconnected');
+});
+
+// API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/rooms', roomRoutes);
 app.use('/api/restaurant', restaurantRoutes);
@@ -62,6 +80,16 @@ app.use('/api/housekeeping', housekeepingRoutes);
 app.use('/api/hotel', hotelDetailsRoutes);
 app.use('/api/invoices', invoiceRoutes);
 
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'OK', 
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
+// Serve frontend in production
 if (process.env.NODE_ENV === 'production') {
   const path = require('path');
   app.use(express.static(path.join(__dirname, '../frontend/build')));
@@ -70,9 +98,55 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-// Error middleware
-app.use((err, req, res, next) => {
-  res.status(500).json({ error: err.message });
+// 404 handler
+app.use('*', (req, res) => {
+  res.status(404).json({ error: 'Route not found' });
 });
 
-app.listen(process.env.PORT || 5000, () => console.log('Server running'));
+// Global error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Error:', err);
+  
+  // Mongoose validation error
+  if (err.name === 'ValidationError') {
+    const errors = Object.values(err.errors).map(e => e.message);
+    return res.status(400).json({ error: 'Validation Error', details: errors });
+  }
+  
+  // Mongoose duplicate key error
+  if (err.code === 11000) {
+    const field = Object.keys(err.keyValue)[0];
+    return res.status(400).json({ error: `${field} already exists` });
+  }
+  
+  // JWT errors
+  if (err.name === 'JsonWebTokenError') {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+  
+  if (err.name === 'TokenExpiredError') {
+    return res.status(401).json({ error: 'Token expired' });
+  }
+  
+  // Default error
+  res.status(err.status || 500).json({ 
+    error: process.env.NODE_ENV === 'production' 
+      ? 'Internal server error' 
+      : err.message 
+  });
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down gracefully');
+  mongoose.connection.close(() => {
+    console.log('MongoDB connection closed');
+    process.exit(0);
+  });
+});
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+});
