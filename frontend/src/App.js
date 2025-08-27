@@ -4,6 +4,7 @@ import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { AuthProvider } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
+import ErrorBoundary from './components/ErrorBoundary';
 import ProtectedRoute from './components/ProtectedRoute';
 import Navbar from './components/Navbar';
 import Login from './pages/Login';
@@ -69,37 +70,39 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <AuthProvider>
-        <NotificationProvider>
-          <div className="App">
-            <Routes>
-              <Route path="/login" element={<Login />} />
-              <Route path="/*" element={
-                <ProtectedRoute>
-                  <Navbar />
-                  <main className="App-main">
-                    <Routes>
-                      <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                      <Route path="/dashboard" element={<Dashboard />} />
-                      <Route path="/rooms" element={<Rooms />} />
-                      <Route path="/restaurant" element={<RestaurantMenu />} />
-                      <Route path="/orders" element={<Orders />} />
-                      <Route path="/billing" element={<Billing />} />
-                      <Route path="/roomservice" element={<RoomService />} />
-                      <Route path="/payments" element={<Payments />} />
-                      <Route path="/venue-booking" element={<VenueBooking />} />
-                      <Route path="/housekeeping" element={<Housekeeping />} />
-                      <Route path="/reports" element={<Reports />} />
-                      <Route path="/hotel-details" element={<HotelDetails />} />
-                      <Route path="/invoices" element={<Invoice />} />
-                    </Routes>
-                  </main>
-                </ProtectedRoute>
-              } />
-            </Routes>
-          </div>
-        </NotificationProvider>
-      </AuthProvider>
+      <ErrorBoundary>
+        <AuthProvider>
+          <NotificationProvider>
+            <div className="App">
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                <Route path="/*" element={
+                  <ProtectedRoute>
+                    <Navbar />
+                    <main className="App-main">
+                      <Routes>
+                        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                        <Route path="/dashboard" element={<Dashboard />} />
+                        <Route path="/rooms" element={<Rooms />} />
+                        <Route path="/restaurant" element={<RestaurantMenu />} />
+                        <Route path="/orders" element={<Orders />} />
+                        <Route path="/billing" element={<Billing />} />
+                        <Route path="/roomservice" element={<RoomService />} />
+                        <Route path="/payments" element={<Payments />} />
+                        <Route path="/venue-booking" element={<VenueBooking />} />
+                        <Route path="/housekeeping" element={<Housekeeping />} />
+                        <Route path="/reports" element={<Reports />} />
+                        <Route path="/hotel-details" element={<HotelDetails />} />
+                        <Route path="/invoices" element={<Invoice />} />
+                      </Routes>
+                    </main>
+                  </ProtectedRoute>
+                } />
+              </Routes>
+            </div>
+          </NotificationProvider>
+        </AuthProvider>
+      </ErrorBoundary>
     </ThemeProvider>
   );
 }

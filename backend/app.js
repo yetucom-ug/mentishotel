@@ -1,8 +1,16 @@
 const express = require('express');
-const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
+const compression = require('compression');
+const mongoSanitize = require('express-mongo-sanitize');
+const xss = require('xss-clean');
+const hpp = require('hpp');
 require('dotenv').config({ path: process.env.NODE_ENV === 'production' ? '.env.production' : '.env' });
+
+const { connectDB } = require('./config/database');
+const logger = require('./utils/logger');
+const globalErrorHandler = require('./middleware/errorHandler');
+const { apiLimiter } = require('./middleware/rateLimiter');
 
 const authRoutes = require('./routes/authRoutes');
 const roomRoutes = require('./routes/roomRoutes');
@@ -17,6 +25,9 @@ const invoiceRoutes = require('./routes/invoiceRoutes');
 
 const app = express();
 
+// Trust proxy
+app.set('trust proxy', 1);
+
 // Security middleware
 app.use(helmet({
   contentSecurityPolicy: {
@@ -29,6 +40,23 @@ app.use(helmet({
   },
 }));
 
+// Compression middleware
+app.use(compression());
+
+// Data sanitization against NoSQL query injection
+app.use(mongoSanitize());
+
+// Data sanitization against XSS
+app.use(xss());
+
+// Prevent parameter pollution
+app.use(hpp({
+  whitelist: ['status', 'type', 'category'] // Allow these parameters to be duplicated
+}));
+
+// Rate limiting
+app.use('/api/', apiLimiter);
+
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
     ? process.env.FRONTEND_URL 
@@ -39,34 +67,17 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Request logging middleware
+// Request logging middleware (replace console.log with winston)
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  logger.info(`${req.method} ${req.path}`, {
+    ip: req.ip,
+    userAgent: req.get('User-Agent'),
+  });
   next();
 });
 
-// MongoDB connection with better error handling
-mongoose.connect(process.env.MONGO_URI, { 
-  useNewUrlParser: true, 
-  useUnifiedTopology: true,
-  maxPoolSize: 10,
-  serverSelectionTimeoutMS: 5000,
-  socketTimeoutMS: 45000,
-})
-  .then(() => console.log('MongoDB connected successfully'))
-  .catch(err => { 
-    console.error('MongoDB connection error:', err); 
-    process.exit(1); 
-  });
-
-// Handle MongoDB connection events
-mongoose.connection.on('error', err => {
-  console.error('MongoDB error:', err);
-});
-
-mongoose.connection.on('disconnected', () => {
-  console.log('MongoDB disconnected');
-});
+// Connect to MongoDB
+connectDB();
 
 // API routes
 app.use('/api/auth', authRoutes);
@@ -85,7 +96,9 @@ app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'OK', 
     timestamp: new Date().toISOString(),
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV,
+    version: process.env.npm_package_version || '1.0.0'
   });
 });
 
@@ -104,49 +117,21 @@ app.use('*', (req, res) => {
 });
 
 // Global error handling middleware
-app.use((err, req, res, next) => {
-  console.error('Error:', err);
-  
-  // Mongoose validation error
-  if (err.name === 'ValidationError') {
-    const errors = Object.values(err.errors).map(e => e.message);
-    return res.status(400).json({ error: 'Validation Error', details: errors });
-  }
-  
-  // Mongoose duplicate key error
-  if (err.code === 11000) {
-    const field = Object.keys(err.keyValue)[0];
-    return res.status(400).json({ error: `${field} already exists` });
-  }
-  
-  // JWT errors
-  if (err.name === 'JsonWebTokenError') {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
-  
-  if (err.name === 'TokenExpiredError') {
-    return res.status(401).json({ error: 'Token expired' });
-  }
-  
-  // Default error
-  res.status(err.status || 500).json({ 
-    error: process.env.NODE_ENV === 'production' 
-      ? 'Internal server error' 
-      : err.message 
-  });
-});
+app.use(globalErrorHandler);
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully');
-  mongoose.connection.close(() => {
-    console.log('MongoDB connection closed');
-    process.exit(0);
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (err, promise) => {
+  logger.error('Unhandled Promise Rejection:', err);
+  // Close server & exit process
+  server.close(() => {
+    process.exit(1);
   });
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+const server = app.listen(PORT, () => {
+  logger.info(`Server running on port ${PORT}`);
+  logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
 });
+
+module.exports = app;
